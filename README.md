@@ -107,7 +107,7 @@ npm run dev
 
 ## 다음 단계 (진행 예정)
 
-1. GitHub `BootCamp-Codeit/snack` push
+1. ~~GitHub `BootCamp-Codeit/snack` push~~ ✅
 2. TiDB(또는 MySQL) + `prisma migrate deploy`
 3. Render BE 배포 → Vercel FE `NEXT_PUBLIC_API_BASE_URL` 연결
 4. CORS·Swagger·로그인 E2E 확인
