@@ -72,33 +72,29 @@ function lineTotal(price, qty) {
 }
 
 async function clearAll(prisma) {
-  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
-  const tables = [
-    'audit_logs',
-    'expenses',
-    'budget_reservations',
-    'purchase_order_decisions',
-    'purchase_order_items',
-    'purchase_orders',
-    'purchase_request_items',
-    'purchase_requests',
-    'cart_items',
-    'carts',
-    'products',
-    'categories',
-    'invitations',
-    'auth_sessions',
-    'password_reset_tokens',
-    'organization_members',
-    'user_profiles',
-    'users',
-    'budget_periods',
-    'organizations',
-  ];
-  for (const table of tables) {
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\``);
-  }
-  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
+  // TRUNCATE + FOREIGN_KEY_CHECKS는 Prisma MariaDB 풀에서 연결이 달라져 FK 오류가 난다.
+  // deleteMany로 자식 → 부모 순서 삭제.
+  await prisma.purchase_order_items.deleteMany();
+  await prisma.purchase_order_decisions.deleteMany();
+  await prisma.expenses.deleteMany();
+  await prisma.budget_reservations.deleteMany();
+  await prisma.purchase_orders.deleteMany();
+  await prisma.purchase_request_items.deleteMany();
+  await prisma.purchaseRequest.deleteMany();
+  await prisma.cartItem.deleteMany();
+  await prisma.cart.deleteMany();
+  await prisma.audit_logs.deleteMany();
+  await prisma.auth_sessions.deleteMany();
+  await prisma.budget_periods.deleteMany();
+  await prisma.invitation.deleteMany();
+  await prisma.password_reset_tokens.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.category.deleteMany({ where: { parentId: { not: null } } });
+  await prisma.category.deleteMany();
+  await prisma.organizationMember.deleteMany();
+  await prisma.userProfile.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
 }
 
 async function seedCategories(prisma, organizationId) {
