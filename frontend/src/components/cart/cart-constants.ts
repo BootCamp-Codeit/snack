@@ -1,0 +1,1 @@
+export const CART_GRID = "grid-cols-[minmax(280px,1fr)_180px_180px_180px]";

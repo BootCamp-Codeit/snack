@@ -1,0 +1,16 @@
+---
+description: 프로젝트 기술 스택 - Next.js, TypeScript, shadcn, Zustand, TanStack Query, Vercel
+alwaysApply: true
+---
+
+# 기술 스택 가이드라인
+
+이 프로젝트는 아래 스택을 기준으로 개발한다.
+
+- **프레임워크/언어**: Next.js, TypeScript
+- **스타일/UI**: shadcn/ui, Storybook (컴포넌트 문서화)
+- **상태 관리**: Zustand (클라이언트 상태), TanStack Query (서버 상태·데이터 페칭)
+- **배포**: Vercel
+- **API**: 추후 정의 (TECH_STACK.md 참고)
+
+새 기능·컴포넌트·상태 설계 시 위 선택을 우선 적용한다. 다른 라이브러리 도입이 필요하면 TECH_STACK.md와 팀 합의를 따른다.

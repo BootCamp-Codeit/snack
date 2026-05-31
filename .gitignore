@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# build
+.next/
+out/
+dist/
+build/
+coverage/
+
+# logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# prisma
+backend/prisma/*.db
+
+# misc
+.turbo
+*.tsbuildinfo

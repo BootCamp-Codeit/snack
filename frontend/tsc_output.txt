@@ -1,0 +1,3 @@
+src/components/ui/input.tsx(207,13): error TS2322: Type '"ghost"' is not assignable to type '"invite" | "solid" | "solid-selected" | "solid-disabled" | "outlined" | "outlined-selected" | "outlined-disabled" | "etc" | "social-google" | "social-google-outlined" | "social-kakao" | "social-naver" | "add" | null | undefined'.
+src/components/ui/input.tsx(208,13): error TS2322: Type '"icon-xs" | "icon"' is not assignable to type '"invite" | "sm" | "lg" | "etc-sm" | "etc-lg" | "social-sm" | "social-lg" | "add-sm" | "add-lg" | null | undefined'.
+  Type '"icon-xs"' is not assignable to type '"invite" | "sm" | "lg" | "etc-sm" | "etc-lg" | "social-sm" | "social-lg" | "add-sm" | "add-lg" | null | undefined'.
