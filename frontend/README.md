@@ -12,20 +12,36 @@ API·비즈니스 규칙은 [backend/README.md](../backend/README.md) 및 Swagge
 | 구분 | URL | 비고 |
 |------|-----|------|
 | **GitHub (monorepo)** | https://github.com/BootCamp-Codeit/snack |
-| **프론트 (Vercel)** | _(포트폴리오 배포 예정)_ |
-| **백엔드 (Render)** | _(포트폴리오 배포 예정)_ |
+| **프론트 (Vercel)** | https://snack-gray.vercel.app |
+| **백엔드 (EC2)** | https://ssnackk.duckdns.org |
+| **Swagger** | https://ssnackk.duckdns.org/api/docs |
 | **팀 FE (레거시)** | https://frontend042.vercel.app |
 | **팀 BE (레거시)** | https://anjgkwl.n-e.kr |
-| **Render 백업** | https://snack-xlvk.onrender.com |
 | **로컬 FE** | `http://localhost:3000` | `next dev` |
-| **로컬 BE** | `http://localhost:3000` | 포트 충돌 시 FE `3001` 등 |
+| **로컬 BE** | `http://localhost:3000` | 포트 충돌 시 FE `3001` |
 
-### 배포 상태 (BE와 동일)
+### 배포 상태
 
 | 구분 | 내용 |
 |------|------|
-| **설계 목표** | AWS EC2 + Docker + Nginx (`snack-BE/snack/deploy/README.md`) |
-| **현재** | EC2 **비용으로 중단**, 재구축 **예정** |
+| **FE** | Vercel · Root Directory `frontend` |
+| **BE** | EC2 + RDS + Docker · [backend/deploy/README.md](../backend/deploy/README.md) |
+| **env** | `NEXT_PUBLIC_API_BASE_URL=https://ssnackk.duckdns.org` |
+
+---
+
+# 🎭 데모 계정 (시드)
+
+비밀번호 공통: **`qwert12345!`**
+
+| 용도 | 이메일 | 화면 |
+|------|--------|------|
+| 구매자 SUPER_ADMIN | `demo@snack.dev` | 예산·멤버·조직 |
+| 구매자 ADMIN | `admin@snack.dev` | 구매 요청 |
+| 구매자 MEMBER | `member@snack.dev` | **장바구니** · 구매 이력 |
+| 판매자 | `supplier@snack.dev` | **/admin/purchase-manage** PO 승인 |
+
+시드 재실행: [루트 README](../README.md#데모-체험-시드-데이터) 참고.
 
 ---
 
@@ -69,7 +85,7 @@ API·비즈니스 규칙은 [backend/README.md](../backend/README.md) 및 Swagge
 
 ```env
 # BE Origin, 끝 슬래시 없음
-NEXT_PUBLIC_API_BASE_URL=https://anjgkwl.n-e.kr
+NEXT_PUBLIC_API_BASE_URL=https://ssnackk.duckdns.org
 ```
 
 로컬:
@@ -85,7 +101,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
 NEXT_PUBLIC_AUTH_LOGIN_RSA_PUBLIC_KEY_PEM=...
 ```
 
-정의: `src/lib/env.ts` — 미설정 시 기본값 `https://snack-xlvk.onrender.com`.
+정의: `src/lib/env.ts` — 미설정 시 기본값 `https://snack-xlvk.onrender.com` (로컬·Vercel에서는 **env 필수**).
 
 ## 호출 방식
 
@@ -190,11 +206,51 @@ src/
 
 # ✅ 배포 체크리스트
 
-- [ ] Vercel `NEXT_PUBLIC_API_BASE_URL` = 현재 운영 BE (`anjgkwl.n-e.kr` 등)  
-- [ ] BE CORS·`FRONTEND_URL`에 Vercel 도메인  
-- [ ] 로그인 → localStorage 토큰 → 장바구니·구매 요청 동작  
-- [ ] 도메인 변경 시 FE env + BE README + Swagger URL 동시 갱신  
-- [ ] EC2 복구 후 env·README에서 임시 도메인 문구 정리  
+- [x] Vercel `NEXT_PUBLIC_API_BASE_URL` = `https://ssnackk.duckdns.org`  
+- [x] BE `FRONTEND_URL` = `https://snack-gray.vercel.app`  
+- [ ] `demo@snack.dev` / `supplier@snack.dev` 로그인 → 장바구니·구매·승인 화면  
+- [ ] signup HTTP 200/201 모두 처리 (`src/lib/api/auth.ts`)  
+
+---
+
+## 8. 트러블슈팅 (대표)
+
+| 증상 | 원인 | 조치 |
+|------|------|------|
+| API 타임아웃·502 | BE 기동 중 / Nginx upstream | EC2 `docker logs snack-api` · health 확인 |
+| signup FE 오류 · BE 200 | FE가 201만 성공 처리 | `auth.ts` — 200/201 모두 success |
+| CORS | `FRONTEND_URL` 불일치 | BE `.env` + compose 재기동 |
+| 로그인 후 빈 목록 | 시드 미실행 | `docker exec snack-api node prisma/seed.js` |
+| BE signup 500 (~10s) | Prisma `$connect()` 풀 | [backend README](../backend/README.md) 2026-05-31 |
+
+---
+
+## 9. 개발·배포 리포트 (날짜별)
+
+### 2026-05-28 ~ 05-30 · Vercel + EC2 monorepo
+
+**상황**  
+팀 FE를 monorepo `frontend/`로 이전, BE는 EC2 HTTPS API 연동.
+
+**조치**  
+- Vercel Root Directory `frontend`  
+- `NEXT_PUBLIC_API_BASE_URL=https://ssnackk.duckdns.org`  
+- 루트·FE README Live URL 동기화  
+
+---
+
+### 2026-05-31 · FE signup + BE Prisma 연동
+
+**상황**  
+BE signup 수정 후 FE에서 여전히 실패 — HTTP status 처리 및 API URL 확인.
+
+**조치**  
+- signup 응답 **200·201** 모두 성공으로 처리  
+- BE `prisma.service.ts` `$connect()` → `$queryRaw` (backend README 참고)  
+- 데모 시드 — 구매·판매자·장바구니·PO 상태별 샘플  
+
+**결과**  
+https://snack-gray.vercel.app 에서 데모 계정으로 end-to-end 체험 가능.
 
 ---
 

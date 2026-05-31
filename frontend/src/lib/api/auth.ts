@@ -246,7 +246,7 @@ export async function signupAdmin(
     }),
   });
 
-  if (res.status === 201) {
+  if (res.status === 201 || res.status === 200) {
     return { ok: true };
   }
 

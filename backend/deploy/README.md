@@ -27,17 +27,33 @@ docker compose -f deploy/docker-compose.ec2.yml up -d --build
 - 외부 ElastiCache만 쓰려면 compose에서 `redis` 서비스와 `REDIS_*` override를 제거하고 `.env`만 맞추면 됩니다.  
 - API 컨테이너 부팅 시 `prisma migrate deploy` 실행(`SKIP_MIGRATIONS=true` 로 생략 가능).
 
-EC2 내부 확인: `curl -sS http://127.0.0.1:3000/api/health`
+EC2 내부 확인:
 
-## 4. Nginx + TLS
+```bash
+curl -sS http://127.0.0.1:3000/api/health
+curl -sS -H "x-health-db-secret: <HEALTH_DB_SECRET>" http://127.0.0.1:3000/api/health/db
+```
+
+기동 로그에 `[PrismaService] Database ready (Nms)` 가 **1초 이내**로 보여야 정상입니다.  
+`Nest application successfully started +10000ms` 이면 [Prisma `$connect()` 이슈](../src/database/prisma.service.ts) — `$queryRaw SELECT 1` 패치 확인.
+
+## 4. 데모 시드 (운영 DB)
+
+```bash
+docker exec snack-api node prisma/seed.js
+```
+
+> **전체 TRUNCATE** — 테스트·데모용. `prisma/seed-data.js`에서 시나리오 수정 가능.
+
+## 5. Nginx + TLS
 
 `nginx.example.conf` 참고. HTTPS 권장.
 
-## 5. 부팅 자동 기동 (선택)
+## 6. 부팅 자동 기동 (선택)
 
 `snack-api.docker.service` → `/etc/systemd/system/`, `WorkingDirectory` 를 실제 클론 경로로 수정 후 `systemctl enable --now`.
 
-## 6. 이미지만
+## 7. 이미지만
 
 ```bash
 docker build -t snack-api:latest .
@@ -47,7 +63,7 @@ docker build -t snack-api:latest .
 
 **로컬 MySQL + 마이그레이션**은 프로젝트 루트 `docker-compose.yml` — 팀원 안내는 [docs/TEAM.md](../docs/TEAM.md).
 
-## 7. GitHub Actions로 `main` → EC2 반영
+## 8. GitHub Actions로 `main` → EC2 반영
 
 1. EC2에 저장소를 한 번 클론하고 `.env`·Node·PM2(또는 Docker)를 준비합니다. GitHub Actions는 **저장소 루트**에서 `git pull`한 뒤 **`snack/`** 으로 들어가 빌드합니다.
 2. GitHub 저장소 **Settings → Secrets and variables → Actions**  

@@ -16,25 +16,55 @@
 | 환경 | URL | 비고 |
 |------|-----|------|
 | 로컬 | `http://localhost:3000` | 개발용 |
-| **현재 운영 API** | `https://anjgkwl.n-e.kr` | 임시 무료 도메인 — **변경될 수 있음** |
-| 프론트 (Vercel) | `https://frontend042.vercel.app` | FE 기본 호스팅 |
-| Render (대안) | `https://snack-xlvk.onrender.com` | 코드·CI 기본값. EC2 복구 전 백업/헬스 ping용 |
+| **포트폴리오 운영 API** | `https://ssnackk.duckdns.org` | EC2 + RDS + Nginx TLS |
+| **프론트 (Vercel)** | `https://snack-gray.vercel.app` | `NEXT_PUBLIC_API_BASE_URL` 연동 |
+| Render (백업) | `https://snack-xlvk.onrender.com` | CI·keep-alive |
+| 팀 BE (레거시) | `https://anjgkwl.n-e.kr` | 참고용 |
 
 헬스체크:
 
 ```
-GET https://anjgkwl.n-e.kr/api/health
+GET https://ssnackk.duckdns.org/api/health
+GET https://ssnackk.duckdns.org/api/health/db   # HEALTH_DB_SECRET 헤더 필요(프로덕션)
 ```
 
 ### 배포 상태 (운영)
 
 | 구분 | 내용 |
 |------|------|
-| **설계 목표** | **AWS EC2** + Docker Compose + Nginx/TLS ([deploy/README.md](./deploy/README.md)) |
-| **현재** | EC2는 **비용 문제로 중단** — 재구축 **예정**, 아직 미진행, 도메인 `https://anjgkwl.n-e.kr` 이었음 |
-| **도메인** | 무료 도메인 사이트에서 발급 — **URL 교체 가능**. EC2 복구 시 공식 도메인·HTTPS로 정리 예정 |
+| **인프라** | AWS EC2 (t3.micro) + **RDS MySQL** + Docker Compose + Nginx + Let's Encrypt |
+| **도메인** | DuckDNS `ssnackk.duckdns.org` → Elastic IP |
+| **Redis** | Compose 내부 `snack-redis` (호스트 미노출) |
+| **가이드** | [deploy/README.md](./deploy/README.md) |
 
-> README의 운영 URL은 위 표를 기준으로 합니다. EC2·도메인이 바뀌면 **Base URL 표**와 [docs/TEAM.md](./docs/TEAM.md)의 `BASE_URL`만 맞춰 주면 됩니다. 이력서·포트폴리오 링크도 동일하게 갱신하세요.
+> URL 변경 시 **Base URL 표** · Vercel env · [docs/TEAM.md](./docs/TEAM.md) · 루트 README를 함께 갱신하세요.
+
+---
+
+# 🌱 데모 시드 (`npm run db:seed`)
+
+채용 담당자·리뷰어가 **실제 운영 흐름**을 바로 볼 수 있도록 구매·승인·예산·초대 데이터를 넣습니다.
+
+| 항목 | 내용 |
+|------|------|
+| 구매자 조직 | 코드잇 10기 마케팅팀 — `demo@` / `admin@` / `member@snack.dev` |
+| 판매자 조직 | Snack B2B 공급센터 — `supplier@snack.dev` (PO 승인 화면) |
+| 비밀번호 | `qwert12345!` (공통) |
+| 상품 | 24건 |
+| 장바구니 | member — 3품목 담김 |
+| 구매 요청 | PURCHASED · READY_TO_PURCHASE · OPEN · REJECTED 각 1건 |
+| 예산 | 당월·전월 50만원 |
+| 초대 | `newhire@snack.dev` PENDING |
+
+```bash
+# 로컬
+npm run db:seed
+
+# EC2 (이미지에 prisma/ 포함)
+docker exec snack-api node prisma/seed.js
+```
+
+> **전체 TRUNCATE 후 재생성** — 운영 DB 주의.
 
 ---
 
@@ -235,6 +265,7 @@ npm run start:dev
 | `npm run start:dev` | 개발 서버 (watch) |
 | `npm run build` / `start:prod` | 프로덕션 빌드·실행 |
 | `npm run compose:up` | Docker Compose 기동 |
+| `npm run db:seed` | 데모 데이터 전체 재생성 (TRUNCATE) |
 | `npm run test` | 단위 테스트 |
 | `npm run test:e2e` | E2E (`test/flow.e2e-spec.ts`, `RUN_FLOW_E2E=1` 시 전체 플로우) |
 
@@ -264,7 +295,8 @@ backend/
 
 # 🔗 FE 연동 시 체크리스트
 
-- [ ] `NEXT_PUBLIC_API_BASE_URL` = 현재 운영 BE (`https://anjgkwl.n-e.kr` — 도메인 변경 시 `.env`·Vercel env 동기화)  
+- [x] `NEXT_PUBLIC_API_BASE_URL` = `https://ssnackk.duckdns.org`  
+- [x] `FRONTEND_URL` = `https://snack-gray.vercel.app`  
 - [ ] API 호출 시 `Authorization: Bearer`  
 - [ ] Swagger `{BASE_URL}/api/docs`에서 토큰 **Authorize** 후 플로우 검증  
 - [ ] 구매 플로우: Cart → PurchaseRequest → Seller approve → (예산 예약) → Purchase → Expense  
@@ -272,9 +304,81 @@ backend/
 
 ---
 
+## 8. 트러블슈팅 (대표)
+
+| 증상 | 원인 | 조치 |
+|------|------|------|
+| signup/login **500 (~10초)** | MariaDB adapter + Nest `$connect()` 풀 타임아웃 | `prisma.service.ts`: `$connect()` 제거 → `$queryRaw SELECT 1` 기동 검증 |
+| `/api/health` OK · DB 실패 | health는 DB 미검사 | `/api/health/db` + `HEALTH_DB_SECRET` |
+| `allowPublicKeyRetrieval` 있어도 500 | 위 풀 이슈와 별개로 `$connect`가 원인 | EC2 dist에 `Database ready` 로그 확인 |
+| Docker build **CACHED** | 소스 미반영 | `build --no-cache snack-api` |
+| EBS **disk full** | 8GB | 20GB 확장 + `growpart` / `resize2fs` |
+| RDS **Host blocked** | 잘못된 연결 반복 | RDS 재부팅 |
+| `DATABASE_URL=localhost` | 컨테이너에 DB 없음 | RDS 엔드포인트 + 비밀번호 URL 인코딩 (`!` → `%21`) |
+| migrate 루프 | RDS 일시 불가 | `SKIP_MIGRATIONS=true` (이후 `migrate deploy` 수동) |
+| NODE_ENV=development 무반응 | compose가 `production` 강제 | compose env 또는 일시적 override |
+
+---
+
+## 9. 개발·배포 리포트 (날짜별)
+
+### 2026-05-28 ~ 05-30 · EC2 + RDS + Vercel monorepo 배포
+
+**상황**  
+팀 Render/TiDB 대신 **EC2 + RDS** 로 포트폴리오 BE 재배포. FE는 Vercel.
+
+**선택 & 이유**  
+- **Docker Compose** — Redis·API 한 스택, [deploy/docker-compose.ec2.yml](./deploy/docker-compose.ec2.yml)  
+- **DuckDNS + Let's Encrypt** — 고정 IP HTTPS  
+- **Prisma MariaDB adapter** + `allowPublicKeyRetrieval` — AWS RDS MySQL 인증  
+
+**트러블슈팅**  
+- EBS 8GB → Docker build 실패 → **20GB 확장**  
+- `DATABASE_URL` localhost → RDS endpoint 수정  
+- migrate 실패 루프 → `SKIP_MIGRATIONS=true`  
+
+---
+
+### 2026-05-31 · signup 500 (~10초) — PrismaService `$connect()` 
+
+**상황**  
+배포 후 `/api/health` 200이지만 **signup·login 500**, 응답까지 **정확히 ~10초**.  
+`docker exec`로 **새 PrismaClient** 직접 쿼리는 **387ms**에 성공.
+
+**검토**  
+- `ConfigService` vs `process.env` `DATABASE_URL` → **동일(EQUAL: true)**  
+- `/api/health`는 DB를 검사하지 않음  
+- MariaDB adapter + Nest 싱글톤 `$connect()` → 이후 쿼리 pool timeout ([Prisma #28879](https://github.com/prisma/prisma/issues/28879))
+
+**선택 & 이유**  
+- `onModuleInit`의 **`$connect()` 제거**  
+- **`$queryRaw\`SELECT 1\``** 로 기동 시 DB 검증 + `Database ready (Nms)` 로그  
+- `process.env.DATABASE_URL` 우선 resolve  
+
+**결과**  
+- `Database ready (236ms)` · `Nest application successfully started +6ms`  
+- `/api/health/db` **0.05s** · signup **0.76s** · `success: true`  
+
+---
+
+### 2026-05-31 · 운영형 데모 시드
+
+**상황**  
+채용 담당자가 로그인만으로 **구매·승인·예산·초대** 흐름을 볼 수 있게 데이터 필요.
+
+**선택 & 이유**  
+- **구매자·판매자 2조직** — B2B 카탈로그·PO 승인 분리  
+- 구매 요청 **4상태** (완료·승인·대기·거절) + member 장바구니 + 초대 + 감사 로그  
+- `prisma/seed.js` + `seed-data.js` — EC2에서 `docker exec snack-api node prisma/seed.js`  
+
+**결과**  
+루트 README 데모 계정 · Swagger · FE 화면에서 end-to-end 체험 가능.
+
+---
+
 # 👥 팀·CI
 
 - 팀 온보딩: [docs/TEAM.md](./docs/TEAM.md)  
 - GitHub Actions: `.github/workflows/backend-ci.yml` (lint·test)  
-- **EC2 배포 가이드**: [deploy/README.md](./deploy/README.md) (목표 인프라 — 현재는 미가동)  
-- Render: `render.yaml` — `snack-backend`, `/api/health` (EC2 대안·keep-alive 워크플로)
+- **EC2 배포 가이드**: [deploy/README.md](./deploy/README.md)  
+- Render: `render.yaml` — keep-alive·백업
