@@ -15,13 +15,17 @@ const {
   DEFAULT_MONTHLY_BUDGET,
   CURRENT_MONTH_BUDGET,
   PREV_MONTH_BUDGET,
+  TWO_MONTHS_AGO_BUDGET,
   BUYER_USERS,
   SELLER_USERS,
   DEFAULT_CATEGORY_TREE,
   DEMO_PRODUCTS,
+  BUYER_PRODUCT_META,
+  SELLER_PRODUCT_META,
   MEMBER_CART,
+  ADMIN_CART,
   PURCHASE_SCENARIOS,
-  PENDING_INVITATION,
+  INVITATIONS,
 } = require('./seed-data');
 
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
@@ -62,9 +66,14 @@ function daysAgo(n) {
   return d;
 }
 
-function prevMonth(year, month) {
-  if (month === 1) return { year: year - 1, month: 12 };
-  return { year, month: month - 1 };
+function prevMonth(year, month, offset = 1) {
+  let y = year;
+  let m = month - offset;
+  while (m <= 0) {
+    m += 12;
+    y -= 1;
+  }
+  return { year: y, month: m };
 }
 
 function lineTotal(price, qty) {
@@ -72,8 +81,6 @@ function lineTotal(price, qty) {
 }
 
 async function clearAll(prisma) {
-  // TRUNCATE + FOREIGN_KEY_CHECKS는 Prisma MariaDB 풀에서 연결이 달라져 FK 오류가 난다.
-  // deleteMany로 자식 → 부모 순서 삭제.
   await prisma.purchase_order_items.deleteMany();
   await prisma.purchase_order_decisions.deleteMany();
   await prisma.expenses.deleteMany();
@@ -145,11 +152,12 @@ async function createOrgWithUsers(prisma, orgMeta, users, passwordHash) {
       members: {
         create: {
           role: superAdmin.role,
-          isActive: true,
+          isActive: superAdmin.memberActive !== false,
           user: {
             create: {
               email: superAdmin.email,
               passwordHash,
+              isActive: superAdmin.memberActive !== false,
               profile: { create: { displayName: superAdmin.displayName } },
             },
           },
@@ -167,6 +175,7 @@ async function createOrgWithUsers(prisma, orgMeta, users, passwordHash) {
       data: {
         email: u.email,
         passwordHash,
+        isActive: u.memberActive !== false,
         profile: { create: { displayName: u.displayName } },
       },
     });
@@ -175,7 +184,7 @@ async function createOrgWithUsers(prisma, orgMeta, users, passwordHash) {
         organizationId: organization.id,
         userId: user.id,
         role: u.role,
-        isActive: true,
+        isActive: u.memberActive !== false,
       },
     });
     userByEmail.set(u.email, user);
@@ -184,23 +193,42 @@ async function createOrgWithUsers(prisma, orgMeta, users, passwordHash) {
   return { organization, userByEmail, creatorUserId: organization.members[0].user.id };
 }
 
-async function seedProducts(prisma, sellerOrgId, categoryByKey, creatorUserId) {
+async function seedProducts(
+  prisma,
+  orgId,
+  categoryByKey,
+  userByEmail,
+  products,
+  metaByName = {},
+) {
   const productByName = new Map();
+  const creatorEmails = [...userByEmail.keys()];
+  let rotate = 0;
 
-  for (const item of DEMO_PRODUCTS) {
+  for (const item of products) {
     const categoryId = categoryByKey.get(`${item.major}::${item.minor}`);
     if (!categoryId) {
       throw new Error(`카테고리 없음: ${item.major} > ${item.minor}`);
     }
+
+    const meta = metaByName[item.name] ?? {};
+    const creatorEmail =
+      meta.registeredBy ?? creatorEmails[rotate % creatorEmails.length];
+    rotate += 1;
+    const creator = userByEmail.get(creatorEmail);
+    if (!creator) {
+      throw new Error(`등록자 없음: ${creatorEmail}`);
+    }
+
     const product = await prisma.product.create({
       data: {
-        organizationId: sellerOrgId,
+        organizationId: orgId,
         categoryId,
         name: item.name,
         price: item.price,
-        createdByUserId: creatorUserId,
+        createdByUserId: creator.id,
         isActive: true,
-        purchaseCountCache: 0,
+        purchaseCountCache: meta.purchaseCount ?? 0,
       },
     });
     productByName.set(item.name, product);
@@ -209,12 +237,12 @@ async function seedProducts(prisma, sellerOrgId, categoryByKey, creatorUserId) {
   return productByName;
 }
 
-async function seedMemberCart(prisma, buyerOrgId, memberUserId, productByName) {
+async function seedUserCart(prisma, buyerOrgId, userId, productByName, items) {
   const cart = await prisma.cart.create({
-    data: { organizationId: buyerOrgId, userId: memberUserId },
+    data: { organizationId: buyerOrgId, userId },
   });
 
-  for (const { productName, quantity } of MEMBER_CART) {
+  for (const { productName, quantity } of items) {
     const product = productByName.get(productName);
     if (!product) throw new Error(`장바구니 상품 없음: ${productName}`);
     await prisma.cartItem.create({
@@ -249,28 +277,38 @@ async function createPurchaseScenario(
   });
 
   const shippingFee = scenario.shippingFee ?? SHIPPING_DEFAULT;
-  const pr = await prisma.purchaseRequest.create({
-    data: {
-      buyerOrganizationId: buyerOrgId,
-      requesterUserId: requester.id,
-      status: scenario.status,
-      requestMessage: scenario.requestMessage,
-      totalAmount,
-      requestedAt,
-      purchase_request_items: {
-        create: lineItems.map(({ product, quantity, unit, line }) => ({
-          seller_organization_id: sellerOrgId,
-          product_id: product.id,
-          product_name_snapshot: product.name,
-          unit_price_snapshot: unit,
-          quantity,
-          line_total: line,
-          created_at: requestedAt,
-        })),
-      },
+  const prData = {
+    buyerOrganizationId: buyerOrgId,
+    requesterUserId: requester.id,
+    status: scenario.status,
+    requestMessage: scenario.requestMessage,
+    totalAmount,
+    requestedAt,
+    purchase_request_items: {
+      create: lineItems.map(({ product, quantity, unit, line }) => ({
+        seller_organization_id: sellerOrgId,
+        product_id: product.id,
+        product_name_snapshot: product.name,
+        unit_price_snapshot: unit,
+        quantity,
+        line_total: line,
+        created_at: requestedAt,
+      })),
     },
+  };
+
+  if (scenario.status === 'CANCELED') {
+    prData.canceledAt = daysAgo(Math.max(scenario.daysAgo - 1, 0));
+  }
+
+  const pr = await prisma.purchaseRequest.create({
+    data: prData,
     include: { purchase_request_items: true },
   });
+
+  if (scenario.poStatus === 'CANCELED') {
+    return;
+  }
 
   const itemsAmount = totalAmount;
   const poData = {
@@ -371,35 +409,47 @@ async function createPurchaseScenario(
         amount: reservedAmount,
         expensed_at: poData.delivered_at ?? requestedAt,
         recorded_by_user_id: userByEmail.get('admin@snack.dev')?.id ?? requester.id,
-        note: '5월 2주차 간식 지출 확정',
+        note: scenario.expenseNote ?? '5월 2주차 간식 지출 확정',
       },
     });
   }
 }
 
-async function seedInvitation(prisma, buyerOrgId, invitedByUserId) {
-  const rawToken = randomBytes(24).toString('hex');
-  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+async function seedInvitations(prisma, buyerOrgId, invitedByUserId, userByEmail) {
+  for (const inv of INVITATIONS) {
+    const rawToken = randomBytes(24).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = daysAgo(-7);
+    const createdAt = daysAgo(inv.daysAgo);
 
-  await prisma.invitation.create({
-    data: {
+    const data = {
       organizationId: buyerOrgId,
-      email: PENDING_INVITATION.email,
-      inviteeName: PENDING_INVITATION.inviteeName,
+      email: inv.email,
+      inviteeName: inv.inviteeName,
       tokenHash,
-      status: 'PENDING',
+      status: inv.status,
       invitedByUserId,
-      roleToGrant: PENDING_INVITATION.roleToGrant,
+      roleToGrant: inv.roleToGrant,
       expiresAt,
-    },
-  });
+      createdAt,
+    };
+
+    if (inv.status === 'ACCEPTED' && inv.acceptedEmail) {
+      const acceptedUser = userByEmail.get(inv.acceptedEmail);
+      if (acceptedUser) {
+        data.acceptedUserId = acceptedUser.id;
+        data.acceptedAt = daysAgo(Math.max(inv.daysAgo - 2, 0));
+      }
+    }
+
+    await prisma.invitation.create({ data });
+  }
 }
 
 async function seedAuditLogs(prisma, buyerOrgId, sellerOrgId, userByEmail, supplierUserId) {
   const superAdmin = userByEmail.get('demo@snack.dev');
   const member = userByEmail.get('member@snack.dev');
+  const admin = userByEmail.get('admin@snack.dev');
 
   const entries = [
     {
@@ -428,11 +478,27 @@ async function seedAuditLogs(prisma, buyerOrgId, sellerOrgId, userByEmail, suppl
     },
     {
       organization_id: buyerOrgId,
+      actor_user_id: admin.id,
+      action: 'PRODUCT_CREATE',
+      target_type: 'product',
+      message: '상품 등록 — 프링글스 오리지널',
+      created_at: daysAgo(10),
+    },
+    {
+      organization_id: buyerOrgId,
       actor_user_id: superAdmin.id,
       action: 'INVITATION_SEND',
       target_type: 'invitation',
-      message: `초대 발송 — ${PENDING_INVITATION.email}`,
+      message: '초대 발송 — newhire@snack.dev',
       created_at: daysAgo(1),
+    },
+    {
+      organization_id: buyerOrgId,
+      actor_user_id: superAdmin.id,
+      action: 'MEMBER_DEACTIVATE',
+      target_type: 'organization_member',
+      message: '멤버 비활성화 — left@snack.dev',
+      created_at: daysAgo(15),
     },
   ];
 
@@ -447,7 +513,8 @@ async function main() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const prev = prevMonth(year, month);
+  const prev = prevMonth(year, month, 1);
+  const twoMonthsAgo = prevMonth(year, month, 2);
 
   try {
     console.log('🗑️  기존 데이터 삭제...');
@@ -463,7 +530,7 @@ async function main() {
     const sellerOrgId = seller.organization.id;
     const supplierUserId = seller.creatorUserId;
 
-    console.log('🏢 구매자 조직·팀 계정...');
+    console.log('🏢 구매자 조직·팀 계정 (%d명)...', BUYER_USERS.length);
     const buyer = await createOrgWithUsers(
       prisma,
       BUYER_ORG,
@@ -473,41 +540,59 @@ async function main() {
     const buyerOrgId = buyer.organization.id;
     const buyerUserByEmail = buyer.userByEmail;
 
-    console.log('📂 판매자 카탈로그...');
+    console.log('📂 구매자 카탈로그 (%d건 — 상품 리스트용)...', DEMO_PRODUCTS.length);
+    const buyerCategories = await seedCategories(prisma, buyerOrgId);
+    const buyerProductByName = await seedProducts(
+      prisma,
+      buyerOrgId,
+      buyerCategories,
+      buyerUserByEmail,
+      DEMO_PRODUCTS,
+      BUYER_PRODUCT_META,
+    );
+
+    console.log('📂 판매자 카탈로그 (%d건 — PO·공급용)...', DEMO_PRODUCTS.length);
     const sellerCategories = await seedCategories(prisma, sellerOrgId);
-    const productByName = await seedProducts(
+    const sellerProductByName = await seedProducts(
       prisma,
       sellerOrgId,
       sellerCategories,
-      supplierUserId,
+      seller.userByEmail,
+      DEMO_PRODUCTS,
+      SELLER_PRODUCT_META,
     );
 
-    console.log('💰 예산 (당월·전월)...');
-    await prisma.budget_periods.create({
-      data: {
-        organization_id: buyerOrgId,
-        year,
-        month,
-        budget_amount: CURRENT_MONTH_BUDGET,
-        created_by_user_id: buyer.creatorUserId,
-      },
-    });
-    await prisma.budget_periods.create({
-      data: {
-        organization_id: buyerOrgId,
-        year: prev.year,
-        month: prev.month,
-        budget_amount: PREV_MONTH_BUDGET,
-        created_by_user_id: buyer.creatorUserId,
-      },
-    });
+    console.log('💰 예산 (3개월)...');
+    for (const { y, m, amount } of [
+      { y: year, m: month, amount: CURRENT_MONTH_BUDGET },
+      { y: prev.year, m: prev.month, amount: PREV_MONTH_BUDGET },
+      { y: twoMonthsAgo.year, m: twoMonthsAgo.month, amount: TWO_MONTHS_AGO_BUDGET },
+    ]) {
+      await prisma.budget_periods.create({
+        data: {
+          organization_id: buyerOrgId,
+          year: y,
+          month: m,
+          budget_amount: amount,
+          created_by_user_id: buyer.creatorUserId,
+        },
+      });
+    }
 
-    console.log('🛒 장바구니 (member)...');
-    await seedMemberCart(
+    console.log('🛒 장바구니 (member·admin)...');
+    await seedUserCart(
       prisma,
       buyerOrgId,
       buyerUserByEmail.get('member@snack.dev').id,
-      productByName,
+      buyerProductByName,
+      MEMBER_CART,
+    );
+    await seedUserCart(
+      prisma,
+      buyerOrgId,
+      buyerUserByEmail.get('admin@snack.dev').id,
+      buyerProductByName,
+      ADMIN_CART,
     );
 
     console.log('📦 구매 요청 시나리오 %d건...', PURCHASE_SCENARIOS.length);
@@ -516,18 +601,19 @@ async function main() {
         scenario,
         buyerOrgId,
         sellerOrgId,
-        productByName,
+        productByName: sellerProductByName,
         userByEmail: buyerUserByEmail,
         supplierUserId,
       });
       console.log('   ✓ %s (%s)', scenario.key, scenario.status);
     }
 
-    console.log('✉️  대기 중 초대...');
-    await seedInvitation(
+    console.log('✉️  초대 (%d건)...', INVITATIONS.length);
+    await seedInvitations(
       prisma,
       buyerOrgId,
       buyerUserByEmail.get('demo@snack.dev').id,
+      buyerUserByEmail,
     );
 
     console.log('📋 감사 로그...');
@@ -545,17 +631,24 @@ async function main() {
     console.log('── 구매자: %s', BUYER_ORG.name);
     console.log('   비밀번호 (공통): %s', DEMO_PASSWORD);
     for (const u of BUYER_USERS) {
-      console.log('   - %s (%s) [%s]', u.email, u.displayName, u.role);
+      const tag = u.memberActive === false ? ' (비활성)' : '';
+      console.log('   - %s (%s) [%s]%s', u.email, u.displayName, u.role, tag);
     }
-    console.log('   장바구니: member %d품목 | 구매요청: 완료·승인·대기·거절 각 1건', MEMBER_CART.length);
+    console.log(
+      '   상품 %d건 | 장바구니 member %d + admin %d | 구매요청 %d건',
+      DEMO_PRODUCTS.length,
+      MEMBER_CART.length,
+      ADMIN_CART.length,
+      PURCHASE_SCENARIOS.length,
+    );
     console.log('');
     console.log('── 판매자: %s', SELLER_ORG.name);
     for (const u of SELLER_USERS) {
-      console.log('   - %s (%s) — PO 승인·발주 화면용', u.email, u.displayName);
+      console.log('   - %s (%s) [%s]', u.email, u.displayName, u.role);
     }
-    console.log('   상품: %d건', DEMO_PRODUCTS.length);
+    console.log('   상품 %d건', DEMO_PRODUCTS.length);
     console.log('');
-    console.log('── 예산: 당월 %s원 | 초대 대기: %s', CURRENT_MONTH_BUDGET.toLocaleString(), PENDING_INVITATION.email);
+    console.log('── 초대: 대기 %d건', INVITATIONS.filter((i) => i.status === 'PENDING').length);
   } finally {
     await prisma.$disconnect();
   }
