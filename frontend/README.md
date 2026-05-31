@@ -36,10 +36,14 @@ API·비즈니스 규칙은 [backend/README.md](../backend/README.md) 및 Swagge
 
 | 용도 | 이메일 | 화면 |
 |------|--------|------|
-| 구매자 SUPER_ADMIN | `demo@snack.dev` | 예산·멤버·조직 |
-| 구매자 ADMIN | `admin@snack.dev` | 구매 요청 |
-| 구매자 MEMBER | `member@snack.dev` | **장바구니** · 구매 이력 |
+| 구매자 SUPER_ADMIN | `demo@snack.dev` | 예산·멤버(8명)·조직 |
+| 구매자 ADMIN | `admin@snack.dev` | 구매 요청 · 장바구니 |
+| 구매자 MEMBER | `member@snack.dev` | **장바구니 4품목** · 구매 이력 |
+| 구매자 MEMBER | `design@snack.dev` | 승인 대기 구매 요청 |
 | 판매자 | `supplier@snack.dev` | **/admin/purchase-manage** PO 승인 |
+| 판매자 ADMIN | `catalog@snack.dev` | 상품 등록 내역 |
+
+> 상품 리스트(`/productlist`)는 **구매자 조직** 카탈로그 33건. API 서버(EC2)는 운영 스케줄에 따라 꺼져 있을 수 있음 — 로그인·목록 조회는 EC2 가동 시간에 확인.
 
 시드 재실행: [루트 README](../README.md#데모-체험-시드-데이터) 참고.
 

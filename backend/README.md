@@ -47,24 +47,26 @@ GET https://ssnackk.duckdns.org/api/health/db   # HEALTH_DB_SECRET 헤더 필요
 
 | 항목 | 내용 |
 |------|------|
-| 구매자 조직 | 코드잇 10기 마케팅팀 — `demo@` / `admin@` / `member@snack.dev` |
-| 판매자 조직 | Snack B2B 공급센터 — `supplier@snack.dev` (PO 승인 화면) |
+| 구매자 조직 | 코드잇 10기 마케팅팀 — `demo@` / `admin@` / `ops@` / `member@` / `design@` / `content@` / `intern@` / `left@snack.dev` |
+| 판매자 조직 | Snack B2B 공급센터 — `supplier@` / `catalog@` / `dispatch@snack.dev` |
 | 비밀번호 | `qwert12345!` (공통) |
-| 상품 | 24건 |
-| 장바구니 | member — 3품목 담김 |
-| 구매 요청 | PURCHASED · READY_TO_PURCHASE · OPEN · REJECTED 각 1건 |
-| 예산 | 당월·전월 50만원 |
-| 초대 | `newhire@snack.dev` PENDING |
+| 상품 | **33건** (구매자·판매자 조직 각각 — 상품 리스트는 구매자 JWT 조직 기준) |
+| 장바구니 | member 4품목 · admin 2품목 |
+| 구매 요청 | 7건 (PURCHASED×2 · READY_TO_PURCHASE · OPEN×2 · REJECTED · CANCELED) |
+| 예산 | 3개월 |
+| 초대 | PENDING 2건 + ACCEPTED 이력 |
 
 ```bash
 # 로컬
 npm run db:seed
 
-# EC2 (이미지에 prisma/ 포함)
+# EC2
+docker cp prisma/seed.js snack-api:/app/prisma/seed.js
+docker cp prisma/seed-data.js snack-api:/app/prisma/seed-data.js
 docker exec snack-api node prisma/seed.js
 ```
 
-> **전체 TRUNCATE 후 재생성** — 운영 DB 주의.
+> **전체 deleteMany 후 재생성** — 운영 DB 주의. 시나리오는 `prisma/seed-data.js`에서 수정.
 
 ---
 
@@ -265,7 +267,7 @@ npm run start:dev
 | `npm run start:dev` | 개발 서버 (watch) |
 | `npm run build` / `start:prod` | 프로덕션 빌드·실행 |
 | `npm run compose:up` | Docker Compose 기동 |
-| `npm run db:seed` | 데모 데이터 전체 재생성 (TRUNCATE) |
+| `npm run db:seed` | 데모 데이터 전체 재생성 (deleteMany) |
 | `npm run test` | 단위 테스트 |
 | `npm run test:e2e` | E2E (`test/flow.e2e-spec.ts`, `RUN_FLOW_E2E=1` 시 전체 플로우) |
 
@@ -368,8 +370,10 @@ backend/
 
 **선택 & 이유**  
 - **구매자·판매자 2조직** — B2B 카탈로그·PO 승인 분리  
-- 구매 요청 **4상태** (완료·승인·대기·거절) + member 장바구니 + 초대 + 감사 로그  
-- `prisma/seed.js` + `seed-data.js` — EC2에서 `docker exec snack-api node prisma/seed.js`  
+- 구매자 조직에 **33상품 카탈로그** 시드 (상품 리스트 API는 JWT `organizationId` 기준)  
+- 구매 요청 **7건** + 회원 **8명** + 장바구니 + 초대 + 감사 로그  
+- MariaDB FK 제약 → `TRUNCATE` 대신 **`deleteMany` 순서 삭제**  
+- `prisma/seed.js` + `seed-data.js` — EC2에서 `docker cp` 후 `node prisma/seed.js`  
 
 **결과**  
 루트 README 데모 계정 · Swagger · FE 화면에서 end-to-end 체험 가능.

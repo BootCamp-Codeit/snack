@@ -40,10 +40,16 @@ curl -sS -H "x-health-db-secret: <HEALTH_DB_SECRET>" http://127.0.0.1:3000/api/h
 ## 4. 데모 시드 (운영 DB)
 
 ```bash
+cd ~/snack/backend   # 실제 클론 경로
+git fetch origin main && git reset --hard origin/main
+
+docker cp prisma/seed.js snack-api:/app/prisma/seed.js
+docker cp prisma/seed-data.js snack-api:/app/prisma/seed-data.js
 docker exec snack-api node prisma/seed.js
 ```
 
-> **전체 TRUNCATE** — 테스트·데모용. `prisma/seed-data.js`에서 시나리오 수정 가능.
+> **전체 deleteMany 후 재생성** — 테스트·데모용. `prisma/seed-data.js`에서 시나리오 수정 가능.  
+> `git pull` divergent 시 `git reset --hard origin/main` (EC2 로컬 수정은 덮어씀).
 
 ## 5. Nginx + TLS
 

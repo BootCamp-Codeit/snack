@@ -26,26 +26,33 @@ Codeit 풀스택 10기 팀 프로젝트 · **FE + BE monorepo**
 
 | 역할 | 이메일 | 이름 | 체험 포인트 |
 |------|--------|------|-------------|
-| SUPER_ADMIN | `demo@snack.dev` | 김명환 | 예산·멤버·조직 설정 |
-| ADMIN | `admin@snack.dev` | 이관리 | 구매 요청·승인 대기 건 |
-| MEMBER | `member@snack.dev` | 박멤버 | **장바구니 3품목** · 구매 요청 이력 |
+| SUPER_ADMIN | `demo@snack.dev` | 김명환 | 예산·멤버(8명)·조직 설정 |
+| ADMIN | `admin@snack.dev` | 이관리 | 구매 요청 · **장바구니 2품목** |
+| ADMIN | `ops@snack.dev` | 한운영 | 구매 요청 이력 |
+| MEMBER | `member@snack.dev` | 박멤버 | **장바구니 4품목** · 구매 요청 |
+| MEMBER | `design@snack.dev` | 최디자인 | 구매 요청(승인 대기) |
+| MEMBER | `content@snack.dev` | 정콘텐츠 | 취소된 요청 이력 |
+| MEMBER | `intern@snack.dev` | 강인턴 | 초대 수락 멤버 |
+| MEMBER | `left@snack.dev` | 조퇴사 | **비활성** 멤버 (회원 관리) |
 
 ### 판매자 — Snack B2B 공급센터
 
 | 역할 | 이메일 | 이름 | 체험 포인트 |
 |------|--------|------|-------------|
 | SUPER_ADMIN | `supplier@snack.dev` | 최공급 | **PO 승인·거절·발주** (`/admin/purchase-manage`) |
+| ADMIN | `catalog@snack.dev` | 오카탈로그 | 상품 등록 내역 |
+| MEMBER | `dispatch@snack.dev` | 윤배송 | 발주·배송 처리 |
 
 ### 시드에 포함된 운영 데이터
 
 | 항목 | 내용 |
 |------|------|
-| 상품 | 24건 (카테고리 트리) |
-| 장바구니 | member 계정 — 담은 채로 대기 |
-| 구매 요청 | **완료(지출 확정)** · **승인(발주 대기)** · **판매자 승인 대기** · **거절** 각 1건 |
-| 예산 | 당월·전월 50만원 |
-| 초대 | `newhire@snack.dev` 대기 중 |
-| 감사 로그 | 구매·승인·예산·초대 샘플 |
+| 상품 | **33건** — 구매자·판매자 조직 각각 카탈로그 (상품 리스트는 **구매자 조직** 기준) |
+| 장바구니 | member 4품목 · admin 2품목 |
+| 구매 요청 | **7건** — 완료 2 · 승인 · 대기 2 · 거절 · 취소 |
+| 예산 | 3개월 (50만·50만·45만) |
+| 초대 | `newhire@snack.dev` · `contractor@snack.dev` 대기 · `intern@` 수락 이력 |
+| 감사 로그 | 구매·승인·예산·초대·상품등록 샘플 |
 
 ### 시드 실행
 
@@ -53,11 +60,14 @@ Codeit 풀스택 10기 팀 프로젝트 · **FE + BE monorepo**
 # 로컬 (backend/.env → DATABASE_URL)
 cd backend && npm run db:seed
 
-# EC2 (RDS 연결된 컨테이너)
+# EC2 (RDS 연결된 컨테이너 — seed 파일 반영 후)
+docker cp prisma/seed.js snack-api:/app/prisma/seed.js
+docker cp prisma/seed-data.js snack-api:/app/prisma/seed-data.js
 docker exec snack-api node prisma/seed.js
 ```
 
-> **주의:** `db:seed`는 **전 테이블 TRUNCATE 후 재생성**입니다. 운영 DB에서는 신중히 실행하세요.
+> **주의:** `db:seed`는 **전 테이블 삭제(deleteMany) 후 재생성**입니다. 운영 DB에서는 신중히 실행하세요.  
+> API 서버(EC2)는 **월~금 12:00~18:00(KST)** 운영 스케줄일 수 있습니다 — FE(Vercel)는 상시 접속 가능.
 
 ---
 
